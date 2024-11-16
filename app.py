@@ -15,7 +15,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'  # Using SQLite for s
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'supersecretkey'  # Secret key for JWT token
 
-CORS(app, origins=["http://localhost:5175"])
+CORS(app, origins=["http://localhost:5175", "https://okoa-gari-client.vercel.app/"])
 # Initialize database and JWT manager
 db.init_app(app)
 jwt = JWTManager(app)
