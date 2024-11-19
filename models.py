@@ -9,7 +9,6 @@ class User(db.Model):
     name = db.Column(db.String(100), unique=True, nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
     role = db.Column(db.String(100), unique=False, nullable=False)
-    location = db.Column(db.String(100), unique=False, nullable=False)
     password = db.Column(db.String(255), nullable=False)
 
     service_users = db.relationship('ServiceUser', back_populates='user')  # Add this line to define the reverse relationship
@@ -40,8 +39,9 @@ class Service(db.Model):
     __tablename__ = 'services'
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # This is the garage id
     name = db.Column(db.String(50), nullable=False)
+    location = db.Column(db.String(50), nullable=False)
     cost = db.Column(db.Float, nullable=False)
 
     service_users = db.relationship('ServiceUser', back_populates='service')  # Add this line to define the reverse relationship
@@ -51,6 +51,7 @@ class Service(db.Model):
             "id": self.id,
             "user_id": self.user_id,
             "name": self.name,
+            "location": self.location,
             "cost": self.cost
         }
 
@@ -62,6 +63,7 @@ class ServiceUser(db.Model):
     service_id = db.Column(db.Integer, db.ForeignKey('services.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     vehicle_id = db.Column(db.Integer, db.ForeignKey('vehicles.id'), nullable=False)
+    paid = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Define relationships
