@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify, make_response
-from models import db, Service, User, ServiceUser, Vehicles
+from models import db, Service, User, ServiceUser, Vehicles, Review
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
+from sqlalchemy.orm import aliased
 import requests
 import base64
 from sqlalchemy.exc import IntegrityError
@@ -159,13 +160,15 @@ def add_service_user():
 def get_service_users():
     user_id = get_jwt_identity()  # Get the user ID from the JWT token
 
-    # Query the service_user table and join with service, vehicle, and user (mechanic) to get the full details
-    service_users = db.session.query(ServiceUser, Service, Vehicles, User).join(
+    # Query the service_user table and join with service, vehicle, user (mechanic), and review to get full details
+    service_users = db.session.query(ServiceUser, Service, Vehicles, User, Review).join(
         Service, ServiceUser.service_id == Service.id
     ).join(
         Vehicles, ServiceUser.vehicle_id == Vehicles.id
     ).join(
         User, Service.user_id == User.id  # Join with User to get mechanic details
+    ).outerjoin(
+        Review, ServiceUser.id == Review.service_user_id  # Outer join to get reviews if they exist
     ).filter(ServiceUser.user_id == user_id).all()
 
     # Format the response
@@ -173,7 +176,7 @@ def get_service_users():
         {
             'id': service_user.ServiceUser.id,
             'service_id': service_user.ServiceUser.service_id,
-            'service_paid': service_user.ServiceUser.paid, 
+            'service_paid': service_user.ServiceUser.paid,
             'service_name': service_user.Service.name,
             'service_location': service_user.Service.location,
             'service_cost': service_user.Service.cost,
@@ -181,8 +184,9 @@ def get_service_users():
             'vehicle_model': service_user.Vehicles.model,
             'vehicle_year': service_user.Vehicles.year,
             'garage_name': service_user.User.name,  # garage name
-            'garage_email': service_user.User.email,  # garage phone
-            'garage_location': service_user.Service.location  # garage location
+            'garage_email': service_user.User.email,  # garage email
+            'garage_location': service_user.Service.location,  # garage location
+            'review_comment': service_user.Review.comment if service_user.Review else None  # review comment if exists
         }
         for service_user in service_users
     ]
@@ -204,13 +208,15 @@ def get_mechanic_service_requests():
     # Gather the service IDs from the mechanic's services
     service_ids = [service.id for service in services]
 
-    # Query the service_user table to find all service requests (service_users) for these services
-    service_requests = db.session.query(ServiceUser, Service, Vehicles, User).join(
+    # Query the service_user table and join with Service, Vehicles, User, and Review to get full details
+    service_requests = db.session.query(ServiceUser, Service, Vehicles, User, Review).join(
         Service, ServiceUser.service_id == Service.id
     ).join(
         Vehicles, ServiceUser.vehicle_id == Vehicles.id
     ).join(
         User, ServiceUser.user_id == User.id  # Join to get the user (customer) who requested the service
+    ).outerjoin(
+        Review, ServiceUser.id == Review.service_user_id  # Outer join with Review to include reviews if they exist
     ).filter(ServiceUser.service_id.in_(service_ids)).all()
 
     # Format the response with service request details
@@ -226,7 +232,8 @@ def get_mechanic_service_requests():
             'customer_name': service_user.User.name,  # Customer's name who requested the service
             'customer_email': service_user.User.email,  # Customer's email
             'vehicle_registration': service_user.Vehicles.registration,
-            'created_at': service_user.ServiceUser.created_at
+            'created_at': service_user.ServiceUser.created_at,
+            'review_comment': service_user.Review.comment if service_user.Review else None  # Review comment if exists
         }
         for service_user in service_requests
     ]
@@ -311,3 +318,87 @@ def post():
         print(f"Error: {e}")
         return make_response(jsonify({"error": "Unable to process STK push", "details": str(e)}), 400)
 
+@service_user_bp.route('/add_review', methods=['POST'])
+@jwt_required()  # Requires a valid JWT token to add a review
+def add_review():
+    user_id = get_jwt_identity()  # Get the user ID from the JWT token
+    data = request.get_json()
+
+    service_user_id = data.get('service_user_id')
+    comment = data.get('comment')
+
+    # Ensure required fields are present
+    if not service_user_id or not comment:
+        return jsonify({"msg": "Missing service_user_id or comment"}), 400
+
+    # Check if the service_user exists
+    service_user = ServiceUser.query.get(service_user_id)
+    if not service_user:
+        return jsonify({"msg": "Service user not found"}), 404
+
+    # Create a new review
+    new_review = Review(
+        service_user_id=service_user_id,
+        comment=comment
+    )
+
+    try:
+        # Add and commit the new review to the database
+        db.session.add(new_review)
+        db.session.commit()
+        return jsonify({"msg": "Review added successfully"}), 201
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"msg": "Review already exists or an error occurred"}), 400
+
+@service_user_bp.route('/reviews', methods=['GET'])
+@jwt_required()  # Ensure the user is authenticated
+def get_all_reviews():
+    # Aliasing User for customer and garage to avoid confusion in join conditions
+    Customer = aliased(User)
+    Garage = aliased(User)
+
+    # Query the Review table and join with ServiceUser, Service, and aliased User tables
+    reviews = db.session.query(
+        Review,
+        ServiceUser,
+        Service,
+        Customer,  # Aliased user as customer
+        Garage  # Aliased user as garage
+    ).join(
+        ServiceUser, Review.service_user_id == ServiceUser.id
+    ).join(
+        Customer, ServiceUser.user_id == Customer.id  # Join to get customer details
+    ).join(
+        Service, ServiceUser.service_id == Service.id
+    ).join(
+        Garage, Service.user_id == Garage.id  # Join to get garage (mechanic) details
+    ).all()
+
+    # Format the response using tuple indexing
+    result = [
+        {
+            'review_id': review[0].id,
+            'review_comment': review[0].comment,
+            'service_user_id': review[1].id,
+            'customer': {
+                'customer_id': review[3].id,
+                'customer_name': review[3].name,
+                'customer_email': review[3].email
+            },
+            'service': {
+                'service_id': review[2].id,
+                'service_name': review[2].name,
+                'service_location': review[2].location,
+                'service_cost': review[2].cost
+            },
+            'garage': {
+                'garage_id': review[4].id,
+                'garage_name': review[4].name,
+                'garage_email': review[4].email
+            }
+        }
+        for review in reviews
+    ]
+
+    return jsonify(result), 200

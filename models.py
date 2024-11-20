@@ -6,7 +6,7 @@ db = SQLAlchemy()
 # User Model
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
     role = db.Column(db.String(100), unique=False, nullable=False)
     password = db.Column(db.String(255), nullable=False)
@@ -73,3 +73,15 @@ class ServiceUser(db.Model):
 
     def __repr__(self):
         return f"<ServiceUser(service_id={self.service_id}, user_id={self.user_id}, vehicle_id={self.vehicle_id})>"
+
+class Review(db.Model):
+    __tablename__ = 'reviews'
+
+    id = db.Column(db.Integer, primary_key=True)
+    service_user_id = db.Column(db.Integer, db.ForeignKey('service_user.id'), nullable=False)
+    comment = db.Column(db.String(500), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationship to allow easy access from service user to review
+    service_user = db.relationship('ServiceUser', backref=db.backref('reviews', lazy=True))
+    
