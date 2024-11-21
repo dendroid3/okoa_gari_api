@@ -1,7 +1,7 @@
 # cars.py
 
 from flask import Blueprint, request, jsonify, make_response
-from models import db, Vehicles
+from models import db, Vehicles, ServiceUser
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 # Define a Blueprint for the cars routes
@@ -117,19 +117,19 @@ def update_vehicle(vehicle_id):
 @cars_bp.route('/mine/<int:vehicle_id>', methods=['DELETE'])
 @jwt_required()
 def delete_vehicle(vehicle_id):
-    # Get the user ID from the JWT token
-    user_id = get_jwt_identity()
+    # Fetch the vehicle by ID
+    vehicle = Vehicles.query.get(vehicle_id)
+    
+    if vehicle:
+        # Delete all ServiceUser records associated with this vehicle
+        ServiceUser.query.filter_by(vehicle_id=vehicle.id).delete()
+        
+        # Now delete the vehicle itself
+        db.session.delete(vehicle)
+        db.session.commit()
+        
+        print(f"Vehicle and associated ServiceUser records deleted successfully.")
+    else:
+        print("Vehicle not found.")
 
-    # Find the vehicle by ID and ensure it belongs to the authenticated user
-    vehicle = Vehicles.query.filter_by(id=vehicle_id, user_id=user_id).first()
-
-    # If vehicle not found or does not belong to the user, return an error
-    if not vehicle:
-        return make_response({"msg": "Vehicle not found or unauthorized"}, 404)
-
-    # Delete the vehicle
-    db.session.delete(vehicle)
-    db.session.commit()
-
-    return make_response({"msg": "Vehicle deleted successfully"}, 200)
 
