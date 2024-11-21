@@ -128,8 +128,24 @@ def delete_vehicle(vehicle_id):
         db.session.delete(vehicle)
         db.session.commit()
         
-        print(f"Vehicle and associated ServiceUser records deleted successfully.")
+        return make_response({"msg": "Vehicle deleted successfully"}, 200)
     else:
-        print("Vehicle not found.")
+        return make_response({"msg": "Vehicle not found or unauthorized"}, 404)
 
 
+def delete_vehicle(vehicle_id):
+    # Get the user ID from the JWT token
+    user_id = get_jwt_identity()
+
+    # Find the vehicle by ID and ensure it belongs to the authenticated user
+    vehicle = Vehicles.query.filter_by(id=vehicle_id, user_id=user_id).first()
+
+    # If vehicle not found or does not belong to the user, return an error
+    if not vehicle:
+        return make_response({"msg": "Vehicle not found or unauthorized"}, 404)
+
+    # Delete the vehicle
+    db.session.delete(vehicle)
+    db.session.commit()
+
+    return make_response({"msg": "Vehicle deleted successfully"}, 200)
